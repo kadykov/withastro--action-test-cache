@@ -1,0 +1,115 @@
+name: Test Astro Cache Feature
+
+# Only run manually to test the cache feature
+on:
+  workflow_dispatch:
+
+jobs:
+  test-cache:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout website repository
+        uses: actions/checkout@v6
+
+      - name: First build (cold cache) - using fork
+        uses: kadykov/withastro--action@astro-cache
+        with:
+          node-version: "24"
+          package-manager: "npm"
+          cache: "true"
+
+      - name: Check if Astro cache was created
+        run: |
+          echo "=== Checking for Astro cache directory ==="
+          if [ -d "node_modules/.astro" ]; then
+            echo "✓ Astro cache directory exists"
+            echo "Cache contents:"
+            ls -lah node_modules/.astro/
+            du -sh node_modules/.astro/
+          else
+            echo "⚠ Astro cache directory not found (may be normal if no images were optimized)"
+          fi
+
+      - name: Check dist output
+        run: |
+          echo "=== Checking dist directory ==="
+          if [ -d "dist" ]; then
+            echo "✓ Build successful"
+            du -sh dist/
+            find dist -name "*.webp" -o -name "*.avif" | head -10
+          else
+            echo "✗ Build failed - no dist directory"
+            exit 1
+          fi
+
+      - name: Clean dist directory
+        run: rm -rf dist
+
+      - name: Second build (should use cache)
+        uses: kadykov/withastro--action@astro-cache
+        with:
+          node-version: "24"
+          package-manager: "npm"
+          cache: "true"
+
+      - name: Verify second build
+        run: |
+          echo "=== Verifying second build ==="
+          if [ -d "dist" ]; then
+            echo "✓ Second build successful with cache"
+            du -sh dist/
+          else
+            echo "✗ Second build failed"
+            exit 1
+          fi
+
+  test-cache-disabled:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout website repository
+        uses: actions/checkout@v6
+
+      - name: Build with cache disabled
+        uses: kadykov/withastro--action@astro-cache
+        with:
+          node-version: "24"
+          package-manager: "npm"
+          cache: "false"
+
+      - name: Verify build succeeded
+        run: |
+          if [ -d "dist" ]; then
+            echo "✓ Build successful with cache disabled"
+          else
+            echo "✗ Build failed"
+            exit 1
+          fi
+
+  test-production-deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Build with caching (using fork)
+        uses: kadykov/withastro--action@astro-cache
+        with:
+          node-version: "24"
+          package-manager: "npm"
+          cache: "true"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-with-cache
+          path: ./dist
+          retention-days: 1
+
+      - name: Test deployment (dry run)
+        run: |
+          echo "Would deploy in production"
+          echo "Skipping actual deployment in test workflow"
